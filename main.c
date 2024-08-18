@@ -6,6 +6,8 @@
 #include <GLES3/gl3.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
 #include "log.h"
 
 static Display *x_display = NULL;
