@@ -5,7 +5,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 get_filename_component(DIR_NAME ${CMAKE_CURRENT_SOURCE_DIR} NAME)
 project(${DIR_NAME})
 
-aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR} SRC)
+aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR}/src SRC)
 
 add_executable(${PROJECT_NAME} ${SRC})
 
