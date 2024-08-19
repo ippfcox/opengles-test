@@ -15,6 +15,11 @@ extern "C"
         EGLDisplay *display;
         EGLSurface *surface;
         GLuint program;
+
+        size_t seq;
+
+        size_t seq_ckpt;
+        size_t time_ms_ckpt;
     };
 
     int egl_window_create(struct egl_context *ctx, EGLNativeDisplayType egl_native_display, EGLNativeWindowType egl_native_window);

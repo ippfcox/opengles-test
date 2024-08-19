@@ -1,5 +1,6 @@
 #include <string.h>
 #include <stdlib.h>
+#include <time.h>
 #include "egl.h"
 #include "log.h"
 
@@ -206,6 +207,18 @@ int egl_load_shader(struct egl_context *ctx, const char *vertex_shader_src, cons
 
 void egl_draw(struct egl_context *ctx)
 {
+    struct timespec tp;
+    clock_gettime(CLOCK_MONOTONIC, &tp);
+    size_t time_ms_curr = tp.tv_sec * 1e3 + tp.tv_nsec / 1e6;
+    if (time_ms_curr - ctx->time_ms_ckpt > 1000)
+    {
+        loginfo("fps: %d", ctx->seq - ctx->seq_ckpt);
+        ctx->seq_ckpt = ctx->seq;
+        ctx->time_ms_ckpt = time_ms_curr;
+    }
+
+    ++ctx->seq;
+
     // draw a triangle
     GLfloat vertices[] = {
         0.0f, 0.5f, 0.0f,
