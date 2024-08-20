@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -223,24 +224,75 @@ int main()
     }
 
     ////////////////////////////////////////////////////////////////////////////
+    //                       VBO/VAO/EBO                                      //
+    ////////////////////////////////////////////////////////////////////////////
+
+    GLuint VBO, VAO, EBO;
+    glGenVertexArrays(1, &VAO); // create VAO(vertex Array object)
+    glGenBuffers(1, &VBO);      // create VBO(vertex buffer object)
+    glGenBuffers(1, &EBO);      // create EBO(element buffer object)
+
+    glBindVertexArray(VAO); // bind VAO, for buffer config & vertex config
+
+    // vertex:                                   texture:
+    // +------------------------------+
+    // |                              |
+    // |      [2]------------[1]      |         [2]------------[1]
+    // |       |    (0, 0)    |       |          |              |
+    // |      [3]------------[0]      |         [3]------------[0]
+    // |                              |
+    // +------------------------------+
+    // (x, y, z, s, t), (x, y, z) for vertex location, (s, t) for texture
+    float vertices[] = {
+        0.5f, 0.5f, 0.0f, 1.0f, 1.0f,
+        0.5f, -0.5f, 0.0f, 1.0f, 0.0f,
+        -0.5f, -0.5f, 0.0f, 0.0f, 0.0f,
+        -0.5f, 0.5f, 0.0f, 0.0f, 1.0f};
+    glBindBuffer(GL_ARRAY_BUFFER, VBO); // bind VBO, pass vertex data (`vertices`) to GPU
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+    // two triagnle -> rectangle
+    unsigned int indices[] = {
+        0, 1, 3,
+        1, 2, 3};
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO); // configure EBO, pass index data (`indices`) to GPU
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+
+    // config vertex attribute 0 pointer, location
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (const void *)0);
+    glEnableVertexAttribArray(0);
+    // config index attribute 1 pointer, texture location
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (const void *)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    // clear binding for VAO
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
+    ////////////////////////////////////////////////////////////////////////////
     //                              shader                                    //
     ////////////////////////////////////////////////////////////////////////////
 
     char vertex_shader_src[] =
         "#version 300 es                          \n"
-        "layout(location = 0) in vec4 vPosition;  \n"
+        "layout (location = 0) in vec3 aPos;      \n"
+        "layout (location = 1) in vec2 aTexCoord; \n"
+        "out vec2 TexCoord;                       \n"
         "void main()                              \n"
         "{                                        \n"
-        "   gl_Position = vPosition;              \n"
+        "    gl_Position = vec4(aPos, 1.0);       \n"
+        "    TexCoord = aTexCoord;                \n"
         "}                                        \n";
     char fragment_shader_src[] =
-        "#version 300 es                              \n"
-        "precision mediump float;                     \n"
-        "out vec4 fragColor;                          \n"
-        "void main()                                  \n"
-        "{                                            \n"
-        "   fragColor = vec4 ( 1.0, 0.0, 0.0, 1.0 );  \n"
-        "}                                            \n";
+        "#version 300 es                          \n"
+        "precision mediump float;                 \n" // OpenGL ES need explicit precision
+        "out vec4 FragColor;                      \n"
+        "in vec2 TexCoord;                        \n"
+        "uniform sampler2D rgb;                   \n"
+        "void main()                              \n"
+        "{                                        \n"
+        "    FragColor = texture(rgb, TexCoord);  \n"
+        "}                                        \n";
 
     GLuint vertex_shader = load_shader(GL_VERTEX_SHADER, vertex_shader_src);
     if (vertex_shader == 0)
@@ -263,7 +315,33 @@ int main()
         return -1;
     }
 
+    glUniform1f(glGetUniformLocation(program, "rgb"), 0);
+
     glClearColor(1.0f, 1.0f, 1.0f, 0.0f);
+
+    ////////////////////////////////////////////////////////////////////////////
+    //                             buffer                                     //
+    ////////////////////////////////////////////////////////////////////////////
+
+    // read RGB24
+    void *buffer = calloc(1, 1920 * 1080 * 3);
+    FILE *fp = fopen("../assets/Kimono_1920x1080_30_1_RGB24.yuv", "rb");
+    fread(buffer, 1, 1920 * 1080 * 3, fp);
+    fclose(fp);
+
+    ////////////////////////////////////////////////////////////////////////////
+    //                            texture                                     //
+    ////////////////////////////////////////////////////////////////////////////
+
+    GLuint texture;
+    glGenTextures(1, &texture);
+
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1920, 1080, 0, GL_RGB, GL_UNSIGNED_BYTE, buffer);
 
     ////////////////////////////////////////////////////////////////////////////
     //                           X11 loop                                     //
@@ -321,26 +399,22 @@ int main()
 
         ++seq;
 
-        // draw a triangle
-        GLfloat vertices[] = {
-            0.0f, 0.5f, 0.0f,
-            -0.5f, -0.5f, 0.0f,
-            0.5f, -0.5f, 0.0f};
-
-        // set viewport
-        glViewport(0, 0, 960, 540);
-
-        // clear color buffer
+        // active GL_TEXTURE0
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        // update texture
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 1920, 1080, GL_RGB, GL_UNSIGNED_BYTE, buffer);
+        // clear window
         glClear(GL_COLOR_BUFFER_BIT);
-
-        // use program object
+        // use shader program
         glUseProgram(program);
-
-        // load vertex data
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, vertices);
-        glEnableVertexAttribArray(0);
-
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+        // bind VAO
+        glBindVertexArray(VAO);
+        // draw rectangle
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+        // unbind
+        glBindVertexArray(0);
+        glUseProgram(0);
 
         eglSwapBuffers(egl_display, egl_surface);
     }
