@@ -7,3 +7,4 @@ project(${DIR_NAME})
 
 add_subdirectory(triangle)
 add_subdirectory(render_rgba)
+add_subdirectory(render_nv24)
