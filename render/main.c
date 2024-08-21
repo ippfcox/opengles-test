@@ -9,20 +9,25 @@
 #include <EGL/eglext.h>
 #include "log.h"
 #include "nv24.h"
+#include "rgb24.h"
 
 #define WINDOW_WIDTH 960
 #define WINDOW_HEIGHT 540
 #define WINDOW_TITLE "Render"
-#define YUV_FILENAME "../assets/Kimono_1920x1080_30_1_NV24.yuv"
-#define YUV_WIDTH 1920
-#define YUV_HEIGHT 1080
+#define NV24_FILENAME "../assets/Kimono_1920x1080_30_1_NV24.yuv"
+#define NV24_WIDTH 1920
+#define NV24_HEIGHT 1080
+#define RGB24_FILENAME "../assets/Kimono_1920x1080_30_1_RGB24.yuv"
+#define RGB24_WIDTH 1920
+#define RGB24_HEIGHT 1080
 
 enum pixel_format
 {
     NV24,
+    RGB24,
 };
 
-static enum pixel_format fmt = NV24;
+static enum pixel_format fmt = RGB24;
 
 static EGLint get_context_render_type(EGLDisplay egl_display)
 {
@@ -38,8 +43,11 @@ int main()
 
     void (*init_func)(int width, int heith);
     int (*init_shader_func)();
-    void (*init_texture)(void *buffer);
-    void (*update_texture)(void *buffer);
+    void (*init_texture_func)(void *buffer);
+    void (*update_texture_func)(void *buffer);
+    char *yuv_filename;
+    int yuv_width;
+    int yuv_height;
     size_t yuv_size;
 
     switch (fmt)
@@ -47,9 +55,22 @@ int main()
     case NV24:
         init_func = nv24_init;
         init_shader_func = nv24_init_shader;
-        init_texture = nv24_init_texture;
-        update_texture = nv24_update_texture;
-        yuv_size = YUV_WIDTH * YUV_HEIGHT * 3;
+        init_texture_func = nv24_init_texture;
+        update_texture_func = nv24_update_texture;
+        yuv_filename = NV24_FILENAME;
+        yuv_width = NV24_WIDTH;
+        yuv_height = NV24_HEIGHT;
+        yuv_size = NV24_WIDTH * NV24_HEIGHT * 3;
+        break;
+    case RGB24:
+        init_func = rgb24_init;
+        init_shader_func = rgb24_init_shader;
+        init_texture_func = rgb24_init_texture;
+        update_texture_func = rgb24_update_texture;
+        yuv_filename = RGB24_FILENAME;
+        yuv_width = RGB24_WIDTH;
+        yuv_height = RGB24_HEIGHT;
+        yuv_size = RGB24_WIDTH * RGB24_HEIGHT * 3;
         break;
     }
 
@@ -211,8 +232,8 @@ int main()
     //                              shader                                    //
     ////////////////////////////////////////////////////////////////////////////
 
-    nv24_init(YUV_WIDTH, YUV_HEIGHT);
-    if (nv24_init_shader() != 0)
+    init_func(yuv_width, yuv_height);
+    if (init_shader_func() != 0)
     {
         logerror("nv24_init_shader failed");
         return -1;
@@ -224,7 +245,7 @@ int main()
 
     // read NV24
     void *buffer = calloc(1, yuv_size);
-    FILE *fp = fopen(YUV_FILENAME, "rb");
+    FILE *fp = fopen(yuv_filename, "rb");
     fread(buffer, 1, yuv_size, fp);
     fclose(fp);
 
@@ -232,7 +253,7 @@ int main()
     //                            texture                                     //
     ////////////////////////////////////////////////////////////////////////////
 
-    nv24_init_texture(buffer);
+    init_texture_func(buffer);
 
     ////////////////////////////////////////////////////////////////////////////
     //                           X11 loop                                     //
@@ -290,7 +311,7 @@ int main()
 
         ++seq;
 
-        nv24_update_texture(buffer);
+        update_texture_func(buffer);
 
         // clear window
         glClear(GL_COLOR_BUFFER_BIT);
