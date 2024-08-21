@@ -25,7 +25,7 @@ static char fragment_shader_src[] =
 static int width_;
 static int height_;
 static GLuint textures_[1];
-GLuint program_;
+static GLuint program_;
 
 void rgb24_init(int width, int height)
 {

@@ -32,7 +32,7 @@ static char fragment_shader_src[] =
 static int width_;
 static int height_;
 static GLuint textures_[2];
-GLuint program_;
+static GLuint program_;
 
 void nv24_init(int width, int height)
 {
