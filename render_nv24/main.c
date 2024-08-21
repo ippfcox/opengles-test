@@ -114,12 +114,13 @@ static GLuint link_program(GLuint vertex_shader, GLuint fragment_shader)
 static void load_texture(GLuint texture, GLint format, GLsizei width, GLsizei height, void *buffer)
 {
     glBindTexture(GL_TEXTURE_2D, texture);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, buffer);
     // glGenerateMipmap(texture);
+    glBindTexture(GL_TEXTURE_2D, GL_NONE);
 }
 
 int main()
@@ -154,7 +155,7 @@ int main()
 
     // show window
     XMapWindow(x11_display, x11_window);
-    XStoreName(x11_display, x11_window, "TITLE");
+    XStoreName(x11_display, x11_window, "NV24");
 
     // get identifiers for the provided atom name strings
     Atom wm_state = XInternAtom(x11_display, "_NET_WM_STATE", 0);
@@ -255,17 +256,17 @@ int main()
     // +------------------------------+
     // (x, y, z, s, t), (x, y, z) for vertex location, (s, t) for texture
     float vertices[] = {
-        1.0f, 1.0f, 0.0f, 1.0f, 0.0f,
-        1.0f, -1.0f, 0.0f, 1.0f, 1.0f,
+        -1.0f, 1.0f, 0.0f, 0.0f, 0.0f,
         -1.0f, -1.0f, 0.0f, 0.0f, 1.0f,
-        -1.0f, 1.0f, 0.0f, 0.0f, 0.0f};
+        1.0f, -1.0f, 0.0f, 1.0f, 1.0f,
+        1.0f, 1.0f, 0.0f, 1.0f, 0.0f};
     glBindBuffer(GL_ARRAY_BUFFER, VBO); // bind VBO, pass vertex data (`vertices`) to GPU
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
     // two triagnle -> rectangle
     unsigned int indices[] = {
-        0, 1, 3,
-        1, 2, 3};
+        0, 1, 2,
+        0, 2, 3};
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO); // configure EBO, pass index data (`indices`) to GPU
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
 
@@ -277,15 +278,15 @@ int main()
     glEnableVertexAttribArray(1);
 
     // clear binding for VAO
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, GL_NONE);
+    glBindVertexArray(GL_NONE);
 
     ////////////////////////////////////////////////////////////////////////////
     //                              shader                                    //
     ////////////////////////////////////////////////////////////////////////////
 
     char vertex_shader_src[] =
-        "#version 300 es                          \n"
+        "#version 320 es                          \n"
         "layout (location = 0) in vec3 aPos;      \n"
         "layout (location = 1) in vec2 aTexCoord; \n"
         "out vec2 TexCoord;                       \n"
@@ -295,24 +296,22 @@ int main()
         "    TexCoord = aTexCoord;                \n"
         "}                                        \n";
     char fragment_shader_src[] =
-        "#version 300 es                                 \n"
-        "precision mediump float;                        \n" // OpenGL ES need explicit precision
-        "out vec4 FragColor;                             \n"
-        "in vec2 TexCoord;                               \n"
-        "uniform sampler2D yuv_y;                        \n"
-        "uniform sampler2D yuv_uv;                       \n"
-        "void main()                                     \n"
-        "{                                               \n"
-        "    vec2 uvTexCoord = TexCoord * vec2(2.0, 1.0);\n"
-        "    vec4 uv = texture(yuv_uv, uvTexCoord);   \n"
-        "    float y = texture(yuv_y, TexCoord).r;       \n"
-        "    float u = uv.r - 0.5; \n"
-        "    float v = uv.g - 0.5; \n"
-        "    float r = y + 1.403 * v;                    \n"
-        "    float g = y - 0.344 * u - 0.714 * v;        \n"
-        "    float b = y + 1.770 * u;                    \n"
-        "    FragColor = vec4(r, g, b, 1.0);             \n"
-        "}                                               \n";
+        "#version 320 es                                                    \n"
+        "precision mediump float;                                           \n" // OpenGL ES need explicit precision
+        "out vec4 FragColor;                                                \n"
+        "in vec2 TexCoord;                                                  \n"
+        "uniform sampler2D y_texture;                                       \n"
+        "uniform sampler2D uv_texture;                                      \n"
+        "void main()                                                        \n"
+        "{                                                                  \n"
+        "    vec3 yuv;                                                      \n"
+        "    yuv.x = texture(y_texture, TexCoord).r;                        \n"
+        "    yuv.yz = texture(uv_texture, TexCoord).rg - vec2(0.5, 0.5);    \n"
+        "    vec3 rgb = mat3(1,       1,        1,                          \n"
+        "                    0,       -0.39465, 2.03211,                    \n"
+        "                    1.13983, -0.58060, 0.0     ) * yuv;            \n"
+        "    FragColor = vec4(rgb, 1.0);                                    \n"
+        "}                                                                  \n";
 
     GLuint vertex_shader = load_shader(GL_VERTEX_SHADER, vertex_shader_src);
     if (vertex_shader == 0)
@@ -335,8 +334,10 @@ int main()
         return -1;
     }
 
-    glUniform1f(glGetUniformLocation(program, "yuv_y"), 0); // 0 for GL_TEXTURE0
-    glUniform1f(glGetUniformLocation(program, "yuv_uv"), 1);
+    glUseProgram(program);
+
+    glUniform1i(glGetUniformLocation(program, "y_texture"), 0); // 0 for GL_TEXTURE0
+    glUniform1i(glGetUniformLocation(program, "uv_texture"), 1);
 
     glClearColor(1.0f, 1.0f, 1.0f, 0.0f);
 
@@ -353,12 +354,13 @@ int main()
     ////////////////////////////////////////////////////////////////////////////
     //                            texture                                     //
     ////////////////////////////////////////////////////////////////////////////
-
     GLuint textures[2];
     glGenTextures(2, textures);
 
+    glActiveTexture(GL_TEXTURE0);
     load_texture(textures[0], GL_RED, 1920, 1080, buffer);
-    load_texture(textures[1], GL_RED, 1920 * 2, 1080, buffer + 1920 * 1080);
+    glActiveTexture(GL_TEXTURE1);
+    load_texture(textures[1], GL_RG, 1920, 1080, buffer + 1920 * 1080);
 
     ////////////////////////////////////////////////////////////////////////////
     //                           X11 loop                                     //
@@ -422,7 +424,7 @@ int main()
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 1920, 1080, GL_RED, GL_UNSIGNED_BYTE, buffer);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, textures[1]);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 1920 * 2, 1080, GL_RED, GL_UNSIGNED_BYTE, buffer + 1920 * 1080);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 1920, 1080, GL_RG, GL_UNSIGNED_BYTE, buffer + 1920 * 1080);
         // clear window
         glClear(GL_COLOR_BUFFER_BIT);
         // use shader program
